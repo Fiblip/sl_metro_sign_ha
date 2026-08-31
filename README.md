@@ -30,11 +30,3 @@ Add the integration from the Home Assistant UI:
 
 - Home Assistant with MQTT configured
 - Access to the SL API used by this integration (no API key is needed)
-
-## Repository Layout
-
-The integration code is stored in `custom_components/sl_metro_sign_ha`.
-
-## Status
-
-The manifest now points to the repository documentation and issue tracker.

@@ -1,4 +1,0 @@
-- Add instructions of how to setup the integration and other dependencies that have to be installed
-- Rename "Number of departures to send" to something more fitting (maximum number of departures to send)
-- Change displays default to be off when
-- Remove previous github action

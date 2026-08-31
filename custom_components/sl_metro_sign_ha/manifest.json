@@ -1,7 +1,7 @@
 {
   "domain": "sl_metro_sign_ha",
   "name": "SL Metro Sign",
-  "version": "0.1.0",
+  "version": "v1.0.0",
   "documentation": "https://github.com/Fiblip/sl_metro_sign_ha",
   "issue_tracker": "https://github.com/Fiblip/sl_metro_sign_ha/issues",
   "dependencies": ["mqtt"],
