@@ -4,10 +4,10 @@ Custom Home Assistant integration for publishing SL metro departure and deviatio
 
 ## Features
 
-- Config flow based setup in Home Assistant
-- Fetches SL departures and deviations
-- Publishes sign-ready data over MQTT
-- Includes a light platform for sign control
+- Select up to 5 metro stations to track departures and deviations with the SL Transport API
+- Sorts the departure data and deviations in decending order
+- Select priority departures to always be published over MQTT
+- Publishes sorted data from selected departures over MQTT
 
 ## Installation with HACS
 
@@ -37,4 +37,4 @@ The integration code is stored in `custom_components/sl_metro_sign_ha`.
 
 ## Status
 
-Before publishing the repository, update the documentation and issue tracker URLs in `custom_components/sl_metro_sign_ha/manifest.json` from the current placeholder values.
+The manifest now points to the repository documentation and issue tracker.
