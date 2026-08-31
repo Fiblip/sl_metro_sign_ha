@@ -1,0 +1,133 @@
+{
+  "config": {
+    "abort": {
+      "max_station_entries_reached": "Maximum of 5 station entries reached. Remove a station entry before adding another."
+    },
+    "error": {
+      "invalid_priority_configuration": "Minimum priority entries cannot exceed maximum sorted entries",
+      "invalid_deviation_configuration": "Deviation settings are invalid",
+      "priority_entries_require_station": "Create at least one station entry before setting minimum priority entries above 0"
+    },
+    "step": {
+      "user": {
+        "title": "API settings",
+        "data": {
+          "forecast": "Forecast (time in minutes to look for departures)",
+          "scan_interval_seconds": "Time between API calls (seconds)"
+        }
+      },
+      "departures": {
+        "title": "Departures",
+        "data": {
+          "maximum_sorted_entries": "Maximum number of departures to send",
+          "minimum_priority_entries": "Minimum number of priority entries",
+          "priority_entry_id": "Priority departure"
+        }
+      },
+      "deviations": {
+        "title": "Deviations",
+        "data": {
+          "deviations_enabled": "Enable deviations",
+          "maximum_deviations": "Maximum number of deviations to send",
+          "minimum_deviation_importance": "Minimum deviation importance level"
+        }
+      },
+      "priority_departure": {
+        "title": "Select priority departure",
+        "data": {
+          "priority_entry_id": "Priority departure"
+        }
+      },
+      "station_search": {
+        "data": {
+          "station_name": "Search for station"
+        }
+      },
+      "station": {
+        "title": "Select station",
+        "data": {
+          "station": "Station"
+        }
+      },
+      "transport": {
+        "data": {
+          "transport": "Mode of transportation"
+        }
+      },
+      "line": {
+        "data": {
+          "line": "Line"
+        }
+      },
+      "direction": {
+        "data": {
+          "direction": "Direction"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "invalid_priority_configuration": "Minimum priority entries cannot exceed maximum sorted entries",
+      "invalid_deviation_configuration": "Deviation settings are invalid",
+      "priority_entries_require_station": "Create at least one station entry before setting minimum priority entries above 0"
+    },
+    "step": {
+      "user": {
+        "title": "API settings",
+        "data": {
+          "forecast": "Forecast (time in minutes to look for departures)",
+          "scan_interval_seconds": "Time between API calls (seconds)"
+        }
+      },
+      "departures": {
+        "title": "Departures",
+        "data": {
+          "maximum_sorted_entries": "Maximum number of departures to send",
+          "minimum_priority_entries": "Minimum number of priority entries",
+          "priority_entry_id": "Priority departure"
+        }
+      },
+      "deviations": {
+        "title": "Deviations",
+        "data": {
+          "deviations_enabled": "Enable deviations",
+          "maximum_deviations": "Maximum number of deviations to send",
+          "minimum_deviation_importance": "Minimum deviation importance level"
+        }
+      },
+      "priority_departure": {
+        "title": "Select priority departure",
+        "data": {
+          "priority_entry_id": "Priority departure"
+        }
+      },
+      "station_search": {
+        "data": {
+          "station_name": "Search for station"
+        }
+      },
+      "station": {
+        "title": "Select station",
+        "data": {
+          "station": "Station"
+        }
+      },
+      "transport": {
+        "data": {
+          "transport": "Mode of transportation"
+        }
+      },
+      "line": {
+        "data": {
+          "line": "Line"
+        }
+      },
+      "direction": {
+        "data": {
+          "direction": "Destination"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+"""Constants for the SL Metro Sign Home Assistant integration."""
+
+from __future__ import annotations
+
+DOMAIN = "sl_mqtt"
+MQTT_DEPARTURES_TOPIC = "metro_sign/departures"
+MQTT_DEVIATIONS_TOPIC = "metro_sign/deviations"
+MQTT_STATE_TOPIC = "metro_sign/state"
+
+DEFAULT_FORECAST = 60
+DEFAULT_MAX_SORTED_ENTRIES = 5
+DEFAULT_MIN_PRIORITY_ENTRIES = 0
+DEFAULT_ENABLE_DEVIATIONS = True
+DEFAULT_MAX_DEVIATIONS = 5
+DEFAULT_MIN_DEVIATION_IMPORTANCE = 1
+MAX_STATION_ENTRIES = 5
+MIN_SCAN_INTERVAL_SECONDS = 10
+DEFAULT_SCAN_INTERVAL_SECONDS = 30
