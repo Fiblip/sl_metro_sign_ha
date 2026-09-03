@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-DOMAIN = "sl_mqtt"
+DOMAIN = "sl_metro_sign_ha"
 MQTT_DEPARTURES_TOPIC = "metro_sign/departures"
 MQTT_DEVIATIONS_TOPIC = "metro_sign/deviations"
 MQTT_STATE_TOPIC = "metro_sign/state"
