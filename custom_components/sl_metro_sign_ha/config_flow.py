@@ -372,10 +372,10 @@ class _SLFlowCommon:
         transport: str | None = None,
         line: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch departure data for a station using a 2-hour forecast window."""
+        """Fetch departure data for a station using a 24-hour forecast window."""
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-        params: dict[str, Any] = {"forecast": 120}
+        params: dict[str, Any] = {"forecast": (24 * 60)}
         if transport:
             params["transport"] = str(transport).upper()
         if line:
