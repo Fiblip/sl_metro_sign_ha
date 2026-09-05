@@ -111,6 +111,15 @@
         "data_description": {
           "direction": "Select or enter the destination direction."
         }
+      },
+      "settings_menu": {
+        "title": "Settings",
+        "data": {
+          "section": "Section"
+        },
+        "data_description": {
+          "section": "Choose which settings section to edit."
+        }
       }
     }
   },

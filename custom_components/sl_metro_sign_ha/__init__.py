@@ -16,10 +16,14 @@ from .const import (
     DEFAULT_ENABLE_DEVIATIONS,
     DEFAULT_FORECAST,
     DEFAULT_MAX_DEVIATIONS,
+    DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT,
     DEFAULT_MAX_SORTED_ENTRIES,
+    DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT,
     DEFAULT_MIN_DEVIATION_IMPORTANCE,
     DEFAULT_MIN_PRIORITY_ENTRIES,
     DEFAULT_SCAN_INTERVAL_SECONDS,
+    CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT,
+    CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT,
     DOMAIN,
     MIN_SCAN_INTERVAL_SECONDS,
     MQTT_DEPARTURES_TOPIC,
@@ -100,6 +104,19 @@ def _get_global_deviation_settings(hass: HomeAssistant) -> tuple[bool, int, int]
         bool(data.get("deviations_enabled", DEFAULT_ENABLE_DEVIATIONS)),
         int(data.get("maximum_deviations", DEFAULT_MAX_DEVIATIONS)),
         int(data.get("minimum_deviation_importance", DEFAULT_MIN_DEVIATION_IMPORTANCE)),
+    )
+
+
+def _get_global_display_brightness_limits(hass: HomeAssistant) -> tuple[int, int]:
+    """Read global display brightness limits in percent."""
+    global_entry = _get_global_settings_entry(hass)
+    if global_entry is None:
+        return DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT, DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT
+
+    data = {**global_entry.data, **global_entry.options}
+    return (
+        int(data.get(CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT, DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT)),
+        int(data.get(CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT, DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT)),
     )
 
 
