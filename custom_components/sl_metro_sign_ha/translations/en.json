@@ -1,12 +1,11 @@
 {
   "config": {
     "abort": {
-      "max_station_entries_reached": "Maximum of 5 station entries reached. Remove a station entry before adding another."
+      "max_station_entries_reached": "Maximum of 5 active station entries reached. Disable or remove a station entry before adding another."
     },
     "error": {
       "invalid_priority_configuration": "Minimum priority entries cannot exceed maximum sorted entries",
       "invalid_deviation_configuration": "Deviation settings are invalid",
-      "invalid_display_configuration": "Display brightness settings are invalid",
       "priority_entries_require_station": "Create at least one station entry before setting minimum priority entries above 0"
     },
     "step": {
@@ -45,17 +44,6 @@
           "deviations_enabled": "Enable publishing deviations.",
           "maximum_deviations": "Maximum number of deviations to publish.",
           "minimum_deviation_importance": "Only include deviations at or above this importance level."
-        }
-      },
-      "display": {
-        "title": "Display settings",
-        "data": {
-          "minimum_display_brightness_percent": "Minimum display brightness (%)",
-          "maximum_display_brightness_percent": "Maximum display brightness (%)"
-        },
-        "data_description": {
-          "minimum_display_brightness_percent": "Lowest brightness the display may use, in percent.",
-          "maximum_display_brightness_percent": "Highest brightness the display may use, in percent."
         }
       },
       "priority_departure": {
@@ -127,7 +115,6 @@
     "error": {
       "invalid_priority_configuration": "Minimum priority entries cannot exceed maximum sorted entries",
       "invalid_deviation_configuration": "Deviation settings are invalid",
-      "invalid_display_configuration": "Display brightness settings are invalid",
       "priority_entries_require_station": "Create at least one station entry before setting minimum priority entries above 0"
     },
     "step": {
@@ -175,17 +162,6 @@
           "deviations_enabled": "Enable publishing deviations.",
           "maximum_deviations": "Maximum number of deviations to publish.",
           "minimum_deviation_importance": "Only include deviations at or above this importance level."
-        }
-      },
-      "display": {
-        "title": "Display settings",
-        "data": {
-          "minimum_display_brightness_percent": "Minimum display brightness (%)",
-          "maximum_display_brightness_percent": "Maximum display brightness (%)"
-        },
-        "data_description": {
-          "minimum_display_brightness_percent": "Lowest brightness the display may use, in percent.",
-          "maximum_display_brightness_percent": "Highest brightness the display may use, in percent."
         }
       },
       "priority_departure": {
@@ -242,6 +218,13 @@
           "direction": "Select or enter the destination direction."
         }
       }
+    }
+  }
+  ,
+  "issues": {
+    "max_active_station_entries": {
+      "title": "Station entry kept disabled",
+      "description": "Only {max_entries} station entries can be active at once. Disable another station entry before enabling {entry_title}."
     }
   }
 }

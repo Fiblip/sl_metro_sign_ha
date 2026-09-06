@@ -7,24 +7,22 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryDisabler
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers import issue_registry as ir
 
 from .const import (
     DEFAULT_ENABLE_DEVIATIONS,
     DEFAULT_FORECAST,
     DEFAULT_MAX_DEVIATIONS,
-    DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT,
     DEFAULT_MAX_SORTED_ENTRIES,
-    DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT,
     DEFAULT_MIN_DEVIATION_IMPORTANCE,
     DEFAULT_MIN_PRIORITY_ENTRIES,
     DEFAULT_SCAN_INTERVAL_SECONDS,
-    CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT,
-    CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT,
     DOMAIN,
+    MAX_STATION_ENTRIES,
     MIN_SCAN_INTERVAL_SECONDS,
     MQTT_DEPARTURES_TOPIC,
     MQTT_DEVIATIONS_TOPIC,
@@ -41,6 +39,7 @@ from .mqtt_builder import (
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.LIGHT]
+MAX_ACTIVE_STATION_ENTRIES_ISSUE = "max_active_station_entries"
 
 
 def is_display_enabled(hass: HomeAssistant) -> bool:
@@ -58,6 +57,43 @@ def _get_global_settings_entry(hass: HomeAssistant) -> ConfigEntry | None:
         if "site_id" not in data:
             return entry
     return None
+
+
+def _is_active_station_entry(entry: ConfigEntry) -> bool:
+    """Return whether a config entry is an enabled station entry."""
+    data = {**entry.data, **entry.options}
+    return "site_id" in data and entry.disabled_by is None
+
+
+def _active_station_entry_count(hass: HomeAssistant) -> int:
+    """Count enabled station entries only."""
+    return sum(1 for entry in hass.config_entries.async_entries(DOMAIN) if _is_active_station_entry(entry))
+
+
+def _max_active_station_entries_issue_id(entry_id: str) -> str:
+    """Build the per-entry issue id for over-cap activation attempts."""
+    return f"{MAX_ACTIVE_STATION_ENTRIES_ISSUE}_{entry_id}"
+
+
+def _create_max_active_station_entries_issue(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Create a visible warning when enabling a station entry would exceed the active cap."""
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        _max_active_station_entries_issue_id(entry.entry_id),
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=MAX_ACTIVE_STATION_ENTRIES_ISSUE,
+        translation_placeholders={
+            "max_entries": str(MAX_STATION_ENTRIES),
+            "entry_title": entry.title or entry.entry_id,
+        },
+    )
+
+
+def _delete_max_active_station_entries_issue(hass: HomeAssistant, entry_id: str) -> None:
+    """Remove the over-cap activation warning for a station entry."""
+    ir.async_delete_issue(hass, DOMAIN, _max_active_station_entries_issue_id(entry_id))
 
 
 def _get_global_scan_interval_seconds(hass: HomeAssistant) -> int:
@@ -104,19 +140,6 @@ def _get_global_deviation_settings(hass: HomeAssistant) -> tuple[bool, int, int]
         bool(data.get("deviations_enabled", DEFAULT_ENABLE_DEVIATIONS)),
         int(data.get("maximum_deviations", DEFAULT_MAX_DEVIATIONS)),
         int(data.get("minimum_deviation_importance", DEFAULT_MIN_DEVIATION_IMPORTANCE)),
-    )
-
-
-def _get_global_display_brightness_limits(hass: HomeAssistant) -> tuple[int, int]:
-    """Read global display brightness limits in percent."""
-    global_entry = _get_global_settings_entry(hass)
-    if global_entry is None:
-        return DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT, DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT
-
-    data = {**global_entry.data, **global_entry.options}
-    return (
-        int(data.get(CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT, DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT)),
-        int(data.get(CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT, DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT)),
     )
 
 
@@ -328,6 +351,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(entry.add_update_listener(_async_update_listener))
         return True
 
+    if _active_station_entry_count(hass) > MAX_STATION_ENTRIES:
+        _LOGGER.warning(
+            "Keeping station entry '%s' disabled because only %s station entries can be active at once.",
+            entry.entry_id,
+            MAX_STATION_ENTRIES,
+        )
+        _create_max_active_station_entries_issue(hass, entry)
+        hass.async_create_task(
+            hass.config_entries.async_set_disabled_by(entry.entry_id, ConfigEntryDisabler.USER)
+        )
+        return False
+
+    _delete_max_active_station_entries_issue(hass, entry.entry_id)
+
     _LOGGER.info(
         "Setting up SL Metro Sign config entry: %s with site_id=%s, transport=%s, line=%s, direction=%s, forecast=%s, scan_interval_seconds=%s",
         entry.entry_id,
@@ -381,5 +418,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _cancel_global_refresh_timer(hass)
         domain_data.pop("display_enabled", None)
         await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    else:
+        _delete_max_active_station_entries_issue(hass, entry.entry_id)
 
     return True

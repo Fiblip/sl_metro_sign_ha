@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -13,24 +14,21 @@ from .const import (
     DEFAULT_ENABLE_DEVIATIONS,
     DEFAULT_FORECAST,
     DEFAULT_MAX_DEVIATIONS,
-    DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT,
     DEFAULT_MAX_SORTED_ENTRIES,
-    DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT,
     DEFAULT_MIN_DEVIATION_IMPORTANCE,
     DEFAULT_MIN_PRIORITY_ENTRIES,
     DEFAULT_SCAN_INTERVAL_SECONDS,
-    CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT,
-    CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT,
     DOMAIN,
     MAX_STATION_ENTRIES,
     MIN_SCAN_INTERVAL_SECONDS,
     SETTINGS_SECTION_DEPARTURES,
     SETTINGS_SECTION_DEVIATIONS,
-    SETTINGS_SECTION_DISPLAY,
     SETTINGS_SECTION_SETTINGS_MENU,
 )
 from .direction_mapping import build_direction_map, resolve_direction_value
 from .sl_api_parser import parse_station_option_values
+
+_LOGGER = logging.getLogger(__name__)
 
 TRANSPORT_OPTIONS = [
     "METRO",
@@ -56,21 +54,30 @@ def _build_entry_title(station_name: str, line: str, destination: str) -> str:
     return f"{clean_station} - {clean_line} {clean_destination}"
 
 
+def _normalize_station_search_text(value: str) -> str:
+    """Normalize station search text to ignore separators like spaces and hyphens."""
+    return "".join(character for character in str(value).casefold() if character.isalnum())
+
+
 class _SLFlowCommon:
     """Shared station/transport/line/direction flow logic."""
+
+    def _active_station_entries(self) -> list[config_entries.ConfigEntry]:
+        """Return enabled station entries only."""
+        active_entries: list[config_entries.ConfigEntry] = []
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            data = {**entry.data, **entry.options}
+            if "site_id" in data and entry.disabled_by is None:
+                active_entries.append(entry)
+        return active_entries
 
     def _use_form_defaults(self) -> bool:
         """Only prefill values when editing an existing config entry."""
         return hasattr(self, "_config_entry")
 
     def _station_entry_count(self) -> int:
-        """Count configured station entries in Home Assistant."""
-        count = 0
-        for entry in self.hass.config_entries.async_entries(DOMAIN):
-            data = {**entry.data, **entry.options}
-            if "site_id" in data:
-                count += 1
-        return count
+        """Count enabled station entries in Home Assistant."""
+        return len(self._active_station_entries())
 
     def _has_station_entries(self) -> bool:
         """Return whether at least one station entry exists."""
@@ -89,7 +96,7 @@ class _SLFlowCommon:
         if not self._has_station_entries():
             return options
 
-        for entry in self.hass.config_entries.async_entries(DOMAIN):
+        for entry in self._active_station_entries():
             data = {**entry.data, **entry.options}
             site_id = data.get("site_id")
             if site_id is None:
@@ -109,7 +116,6 @@ class _SLFlowCommon:
                         options=[
                             selector.SelectOptionDict(value=SETTINGS_SECTION_DEPARTURES, label="Departures"),
                             selector.SelectOptionDict(value=SETTINGS_SECTION_DEVIATIONS, label="Deviations"),
-                            selector.SelectOptionDict(value=SETTINGS_SECTION_DISPLAY, label="Display"),
                         ],
                         mode=selector.SelectSelectorMode.DROPDOWN,
                         multiple=False,
@@ -182,38 +188,23 @@ class _SLFlowCommon:
             }
         )
 
-    def _display_settings_schema(self) -> vol.Schema:
-        """Build the global display brightness settings step schema."""
-        return vol.Schema(
-            {
-                vol.Required(CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT, default=self._minimum_display_brightness_percent): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=1,
-                        max=100,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Required(CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT, default=self._maximum_display_brightness_percent): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=1,
-                        max=100,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-            }
-        )
-
     def _global_settings_schema(self) -> vol.Schema:
         """Compatibility alias for older calls."""
         return self._api_settings_schema()
 
     def _priority_settings_schema(self) -> vol.Schema:
         """Build the dedicated priority selection step schema."""
+        options = self._priority_entry_options()
+        option_values = {option["value"] for option in options}
+        default_value = self._priority_entry_id if self._priority_entry_id in option_values else ""
+        if not default_value and options:
+            default_value = options[0]["value"]
+
         return vol.Schema(
             {
-                vol.Required("priority_entry_id", default=self._priority_entry_id): selector.SelectSelector(
+                vol.Required("priority_entry_id", default=default_value): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=self._priority_entry_options(),
+                        options=options,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                         multiple=False,
                     )
@@ -243,31 +234,12 @@ class _SLFlowCommon:
             user_input.get("minimum_deviation_importance", self._minimum_deviation_importance)
         )
 
-    def _collect_global_display_settings(self, user_input: dict[str, Any]) -> None:
-        """Apply global display brightness settings from form input."""
-        self._minimum_display_brightness_percent = int(
-            user_input.get(CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT, self._minimum_display_brightness_percent)
-        )
-        self._maximum_display_brightness_percent = int(
-            user_input.get(CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT, self._maximum_display_brightness_percent)
-        )
-
     def _validate_global_deviations_settings(self) -> str | None:
         """Validate global deviations settings and return an error key when invalid."""
         if self._maximum_deviations < 0 or self._maximum_deviations > 5:
             return "invalid_deviation_configuration"
         if self._minimum_deviation_importance <= 0 or self._minimum_deviation_importance > 100:
             return "invalid_deviation_configuration"
-        return None
-
-    def _validate_global_display_settings(self) -> str | None:
-        """Validate global display brightness settings and return an error key when invalid."""
-        if not 1 <= self._minimum_display_brightness_percent <= 100:
-            return "invalid_display_configuration"
-        if not 1 <= self._maximum_display_brightness_percent <= 100:
-            return "invalid_display_configuration"
-        if self._minimum_display_brightness_percent > self._maximum_display_brightness_percent:
-            return "invalid_display_configuration"
         return None
 
     def _must_select_priority_departure(self) -> bool:
@@ -285,8 +257,6 @@ class _SLFlowCommon:
             "deviations_enabled": self._deviations_enabled,
             "maximum_deviations": self._maximum_deviations,
             "minimum_deviation_importance": self._minimum_deviation_importance,
-            CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT: self._minimum_display_brightness_percent,
-            CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT: self._maximum_display_brightness_percent,
         }
 
     def _init_flow_state(self, initial: dict[str, Any] | None = None) -> None:
@@ -308,12 +278,6 @@ class _SLFlowCommon:
         self._maximum_deviations: int = int(data.get("maximum_deviations") or DEFAULT_MAX_DEVIATIONS)
         self._minimum_deviation_importance: int = int(
             data.get("minimum_deviation_importance") or DEFAULT_MIN_DEVIATION_IMPORTANCE
-        )
-        self._minimum_display_brightness_percent: int = int(
-            data.get(CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT) or DEFAULT_MIN_DISPLAY_BRIGHTNESS_PERCENT
-        )
-        self._maximum_display_brightness_percent: int = int(
-            data.get(CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT) or DEFAULT_MAX_DISPLAY_BRIGHTNESS_PERCENT
         )
 
     async def _async_search_stations(self, hass: HomeAssistant, station_name: str) -> list[dict[str, Any]]:
@@ -337,6 +301,7 @@ class _SLFlowCommon:
             return []
 
         target_lower = query.casefold()
+        target_normalized = _normalize_station_search_text(query)
         matches: list[tuple[int, int, dict[str, Any]]] = []
 
         for station in payload:
@@ -349,11 +314,16 @@ class _SLFlowCommon:
                 continue
 
             name_lower = name.casefold()
-            if target_lower in name_lower:
+            normalized_name = _normalize_station_search_text(name)
+            if target_lower in name_lower or (target_normalized and target_normalized in normalized_name):
                 if name_lower == target_lower:
                     score = 100
+                elif normalized_name == target_normalized:
+                    score = 95
                 elif name_lower.startswith(target_lower):
                     score = 90
+                elif target_normalized and normalized_name.startswith(target_normalized):
+                    score = 85
                 else:
                     score = 80
 
@@ -372,10 +342,10 @@ class _SLFlowCommon:
         transport: str | None = None,
         line: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch departure data for a station using a 24-hour forecast window."""
+        """Fetch departure data for a station using a 12-hour forecast window."""
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-        params: dict[str, Any] = {"forecast": (24 * 60)}
+        params: dict[str, Any] = {"forecast": (60 * 12)}   # Higher value than 20 hours causes problems
         if transport:
             params["transport"] = str(transport).upper()
         if line:
@@ -387,7 +357,15 @@ class _SLFlowCommon:
             async with websession.get(api_url, params=params, timeout=15) as response:
                 response.raise_for_status()
                 payload = await response.json()
-        except Exception:
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to fetch station departures during config flow: site_id=%s transport=%s line=%s forecast=%s error=%s",
+                site_id,
+                params.get("transport"),
+                params.get("line"),
+                params.get("forecast"),
+                err,
+            )
             return []
 
         if not isinstance(payload, dict):
@@ -672,12 +650,6 @@ class SLMqttConfigFlow(_SLFlowCommon, config_entries.ConfigFlow, domain=DOMAIN):
         self._minimum_deviation_importance = int(
             global_data.get("minimum_deviation_importance", self._minimum_deviation_importance)
         )
-        self._minimum_display_brightness_percent = int(
-            global_data.get(CONF_MINIMUM_DISPLAY_BRIGHTNESS_PERCENT, self._minimum_display_brightness_percent)
-        )
-        self._maximum_display_brightness_percent = int(
-            global_data.get(CONF_MAXIMUM_DISPLAY_BRIGHTNESS_PERCENT, self._maximum_display_brightness_percent)
-        )
         self._normalize_priority_state()
 
     def _create_global_settings_entry(self):
@@ -771,33 +743,11 @@ class SLMqttConfigFlow(_SLFlowCommon, config_entries.ConfigFlow, domain=DOMAIN):
                 if validation_error:
                     errors["base"] = validation_error
                 else:
-                    return await self.async_step_display()
+                    return self._create_global_settings_entry()
 
         return self.async_show_form(
             step_id="deviations",
             data_schema=self._deviations_settings_schema(),
-            errors=errors,
-        )
-
-    async def async_step_display(self, user_input: dict[str, Any] | None = None):
-        """Step 4 for global flow: display brightness settings."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            try:
-                self._collect_global_display_settings(user_input)
-            except (TypeError, ValueError):
-                errors["base"] = "invalid_input"
-            else:
-                validation_error = self._validate_global_display_settings()
-                if validation_error:
-                    errors["base"] = validation_error
-                else:
-                    return self._create_global_settings_entry()
-
-        return self.async_show_form(
-            step_id="display",
-            data_schema=self._display_settings_schema(),
             errors=errors,
         )
 
@@ -848,8 +798,6 @@ class SLMqttOptionsFlow(_SLFlowCommon, config_entries.OptionsFlow):
                 return await self.async_step_departures()
             if section == SETTINGS_SECTION_DEVIATIONS:
                 return await self.async_step_deviations()
-            if section == SETTINGS_SECTION_DISPLAY:
-                return await self.async_step_display()
             errors["base"] = "invalid_input"
 
         return self.async_show_form(
@@ -928,28 +876,6 @@ class SLMqttOptionsFlow(_SLFlowCommon, config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="deviations",
             data_schema=self._deviations_settings_schema(),
-            errors=errors,
-        )
-
-    async def async_step_display(self, user_input: dict[str, Any] | None = None):
-        """Edit display brightness settings from the global settings menu."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            try:
-                self._collect_global_display_settings(user_input)
-            except (TypeError, ValueError):
-                errors["base"] = "invalid_input"
-            else:
-                validation_error = self._validate_global_display_settings()
-                if validation_error:
-                    errors["base"] = validation_error
-                else:
-                    return self._save_global_settings()
-
-        return self.async_show_form(
-            step_id="display",
-            data_schema=self._display_settings_schema(),
             errors=errors,
         )
 
