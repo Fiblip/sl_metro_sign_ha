@@ -1,32 +1,153 @@
 # SL Metro Sign
 
-Custom Home Assistant integration for publishing SL metro departure and deviation data for use with an MQTT-driven metro sign.
+Custom Home Assistant integration that fetches SL departures/deviations and publishes curated payloads over MQTT for an LED metro sign.
 
-## Features
+## What This Integration Does
 
-- Select up to 5 metro stations to track departures and deviations with the SL Transport API
-- Sorts the departure data and deviations in decending order
-- Select priority departures to always be published over MQTT
-- Publishes sorted data from selected departures over MQTT
+- Fetches station departures from the SL Transport API.
+- Supports these transport modes in station setup:
+	- METRO
+	- BUS
+	- TRAM
+	- TRAIN
+	- FERRY
+	- SHIP
+	- TAXI
+- Lets you configure multiple station entries and merges/sorts departures across them.
+- Publishes departures and deviations to dedicated MQTT topics.
+- Exposes a light entity for display power and brightness control.
 
-## Installation with HACS
+## Current Feature Set
+
+- Global settings entry:
+	- Forecast minutes
+	- Scan interval seconds
+	- Maximum sorted departures
+	- Minimum priority departures
+	- Priority station entry
+	- Deviations enabled
+	- Maximum deviations
+	- Minimum deviation importance
+- Station entries:
+	- Station search and selection
+	- Transport, line, and direction selection
+- Active station entry cap:
+	- Maximum 5 active station entries at once
+	- Disabled station entries do not count toward the active cap
+	- Disabled station entries are excluded from priority station selection
+	- If enabling a station would exceed 5 active entries, it is kept disabled and a warning is raised in Repairs
+- Priority safety behavior:
+	- If the currently selected priority station entry is disabled or removed, global priority is automatically reset
+	- `minimum_priority_entries` is automatically set to `0`
+- Station-name matching improvements:
+	- Search matching is separator-insensitive (for example `Tcentralen` matches `T-centralen`)
+- Config-flow diagnostics:
+	- Failed departure fetches in config flow are logged with site, transport, line, and forecast context
+
+## Sorting Behavior
+
+### Departures
+
+- Primary sort: departure timestamp ascending.
+- Secondary sort for equal timestamps:
+	- `Nu`
+	- `X min`
+	- `HH:MM`
+- Priority enforcement:
+	- Ensures `minimum_priority_entries` from the selected priority station when available.
+	- Replaces least-important non-priority rows in the selected window as needed.
+
+### Deviations
+
+- De-duplicates by message text.
+- Keeps the highest importance level for duplicate messages.
+- Filters by minimum importance.
+- Sorts descending by importance.
+- Publishes up to configured maximum.
+
+## MQTT Topics And Payloads
+
+- Departures topic: `metro_sign/departures`
+- Deviations topic: `metro_sign/deviations`
+- Display control state topic: `metro_sign/state`
+
+### Departures payload shape
+
+```json
+{
+	"noof_deps": 3,
+	"dep_info_list": [
+		{
+			"dep_name": "Fruangen",
+			"dep_num": 14,
+			"dep_time": "3 min"
+		}
+	]
+}
+```
+
+### Deviations payload shape
+
+```json
+{
+	"noof_deviations": 1,
+	"deviations": [
+		{
+			"importance_lvl": 3,
+			"message": "Signal fault"
+		}
+	]
+}
+```
+
+### Display state payload shape
+
+```json
+{
+	"power": 1,
+	"brightness": 180
+}
+```
+
+Notes:
+- MQTT publishes are retained.
+- Payloads are only republished when content changes.
+
+## Light Entity
+
+- Entity type: Home Assistant light with brightness mode.
+- Power state controls whether station refresh/publish loop is active.
+- Brightness range: 0-255 state reporting, 1-255 for turn-on brightness values.
+- Last known state is restored on Home Assistant restart.
+
+## Installation (HACS)
 
 1. Open HACS in Home Assistant.
 2. Add this repository as a custom repository.
-3. Select the repository category `Integration`.
+3. Set category to `Integration`.
 4. Install `SL Metro Sign`.
 5. Restart Home Assistant.
 
-## Configuration
-
-Add the integration from the Home Assistant UI:
+## Setup In Home Assistant
 
 1. Go to `Settings` -> `Devices & services`.
 2. Select `Add integration`.
 3. Search for `SL Metro Sign`.
-4. Follow the config flow steps.
+4. Complete global settings.
+5. Add one or more station entries.
 
 ## Requirements
 
-- Home Assistant with MQTT configured
-- Access to the SL API used by this integration (no API key is needed)
+- Home Assistant with MQTT integration configured.
+- Network access to `https://transport.integration.sl.se`.
+
+## Troubleshooting
+
+- `no_line_found` during setup:
+	- Check Home Assistant logs for config-flow fetch warnings.
+	- Verify selected station/transport currently has departures.
+- Station search misses punctuation variants:
+	- Separator-insensitive matching is supported, but exact names can still help with ambiguous results.
+- Cannot enable a station entry:
+	- If 5 station entries are already active, disable one first.
+	- See Repairs warning in Home Assistant for details.

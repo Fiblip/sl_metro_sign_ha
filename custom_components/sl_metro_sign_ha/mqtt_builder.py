@@ -59,7 +59,7 @@ def build_departures_payload(sorted_departures: list[Departure]) -> dict[str, ob
     """Build the MQTT payload for the LED sign."""
     dep_info_list = [
         {
-            "dep_name": departure.direction or "Uknown",
+            "dep_name": departure.direction or "Unknown",
             "dep_num": _coerce_dep_num(departure.line_number),
             "dep_time": departure.display_time,
         }

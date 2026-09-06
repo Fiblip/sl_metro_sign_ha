@@ -188,10 +188,6 @@ class _SLFlowCommon:
             }
         )
 
-    def _global_settings_schema(self) -> vol.Schema:
-        """Compatibility alias for older calls."""
-        return self._api_settings_schema()
-
     def _priority_settings_schema(self) -> vol.Schema:
         """Build the dedicated priority selection step schema."""
         options = self._priority_entry_options()
@@ -393,25 +389,6 @@ class _SLFlowCommon:
             departures,
             transport_order=TRANSPORT_OPTIONS,
             fallback_directions=fallback_directions,
-        )
-
-    async def async_step_user(self, user_input: dict[str, Any] | None = None):
-        """Step 1: Global settings."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            try:
-                self._forecast = int(user_input["forecast"])
-                self._scan_interval_seconds = int(user_input["scan_interval_seconds"])
-            except (TypeError, ValueError):
-                errors["base"] = "invalid_input"
-            else:
-                return await self.async_step_station_search()
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=self._global_settings_schema(),
-            errors=errors,
         )
 
     async def async_step_station_search(self, user_input: dict[str, Any] | None = None):

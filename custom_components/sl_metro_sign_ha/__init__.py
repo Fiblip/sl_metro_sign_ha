@@ -143,6 +143,30 @@ def _get_global_deviation_settings(hass: HomeAssistant) -> tuple[bool, int, int]
     )
 
 
+def _clear_priority_if_entry_matches(hass: HomeAssistant, station_entry_id: str) -> None:
+    """Reset priority settings when the current priority station is disabled or removed."""
+    global_entry = _get_global_settings_entry(hass)
+    if global_entry is None:
+        return
+
+    merged = {**global_entry.data, **global_entry.options}
+    current_priority_entry_id = str(merged.get("priority_entry_id") or "").strip()
+    if current_priority_entry_id != station_entry_id:
+        return
+
+    updated_data = dict(global_entry.data)
+    updated_options = dict(global_entry.options)
+    updated_data["minimum_priority_entries"] = 0
+    updated_data["priority_entry_id"] = ""
+    updated_options["minimum_priority_entries"] = 0
+    updated_options["priority_entry_id"] = ""
+    hass.config_entries.async_update_entry(global_entry, data=updated_data, options=updated_options)
+    _LOGGER.info(
+        "Reset global priority settings because station entry '%s' was disabled or removed.",
+        station_entry_id,
+    )
+
+
 async def _async_refresh_all_station_entries(hass: HomeAssistant) -> None:
     """Refresh every real station entry once using the shared global timer."""
     domain_data = hass.data.setdefault(DOMAIN, {})
@@ -357,6 +381,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.entry_id,
             MAX_STATION_ENTRIES,
         )
+        _clear_priority_if_entry_matches(hass, entry.entry_id)
         _create_max_active_station_entries_issue(hass, entry)
         hass.async_create_task(
             hass.config_entries.async_set_disabled_by(entry.entry_id, ConfigEntryDisabler.USER)
@@ -419,6 +444,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         domain_data.pop("display_enabled", None)
         await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     else:
+        if entry.disabled_by is not None:
+            _clear_priority_if_entry_matches(hass, entry.entry_id)
         _delete_max_active_station_entries_issue(hass, entry.entry_id)
 
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle cleanup when a config entry is permanently removed."""
+    data = {**entry.data, **entry.options}
+    if "site_id" in data:
+        _clear_priority_if_entry_matches(hass, entry.entry_id)
+        _delete_max_active_station_entries_issue(hass, entry.entry_id)
