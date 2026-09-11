@@ -12,6 +12,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     DEFAULT_ENABLE_DEVIATIONS,
+    DEFAULT_ENABLE_PRIORITY,
     DEFAULT_FORECAST,
     DEFAULT_MAX_DEVIATIONS,
     DEFAULT_MAX_SORTED_ENTRIES,
@@ -23,10 +24,11 @@ from .const import (
     MIN_SCAN_INTERVAL_SECONDS,
     SETTINGS_SECTION_DEPARTURES,
     SETTINGS_SECTION_DEVIATIONS,
+    SETTINGS_SECTION_API,
     SETTINGS_SECTION_SETTINGS_MENU,
 )
 from .direction_mapping import build_direction_map, resolve_direction_value
-from .sl_api_parser import parse_station_option_values
+from .sl_api_parser import extract_leading_line_digits, filter_departures_by_line, parse_station_option_values
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,12 +85,6 @@ class _SLFlowCommon:
         """Return whether at least one station entry exists."""
         return self._station_entry_count() > 0
 
-    def _normalize_priority_state(self) -> None:
-        """Keep global priority settings internally consistent."""
-        if self._minimum_priority_entries <= 0:
-            self._minimum_priority_entries = 0
-            self._priority_entry_id = ""
-
     def _priority_entry_options(self) -> list[selector.SelectOptionDict]:
         """Build selectable station entry options for global priority departure selection."""
         options: list[selector.SelectOptionDict] = []
@@ -114,6 +110,7 @@ class _SLFlowCommon:
                 vol.Required("section"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
+                            selector.SelectOptionDict(value=SETTINGS_SECTION_API, label="API"),
                             selector.SelectOptionDict(value=SETTINGS_SECTION_DEPARTURES, label="Departures"),
                             selector.SelectOptionDict(value=SETTINGS_SECTION_DEVIATIONS, label="Deviations"),
                         ],
@@ -126,12 +123,13 @@ class _SLFlowCommon:
 
     def _api_settings_schema(self) -> vol.Schema:
         """Build the global API settings step schema."""
+        default_forecast_hours = min(20, max(1, round(self._forecast / 60)))
         return vol.Schema(
             {
-                vol.Required("forecast", default=self._forecast): selector.NumberSelector(
+                vol.Required("forecast", default=default_forecast_hours): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=1,
-                        max=180,
+                        max=20,
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
@@ -156,9 +154,17 @@ class _SLFlowCommon:
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
-                vol.Required("minimum_priority_entries", default=self._minimum_priority_entries): selector.NumberSelector(
+                vol.Required("priority_enabled", default=self._priority_enabled): bool,
+            }
+        )
+
+    def _initial_departures_settings_schema(self) -> vol.Schema:
+        """Build the initial departures settings schema before station entries exist."""
+        return vol.Schema(
+            {
+                vol.Required("maximum_sorted_entries", default=self._maximum_sorted_entries): selector.NumberSelector(
                     selector.NumberSelectorConfig(
-                        min=0,
+                        min=1,
                         max=10,
                         mode=selector.NumberSelectorMode.BOX,
                     )
@@ -188,16 +194,24 @@ class _SLFlowCommon:
             }
         )
 
-    def _priority_settings_schema(self) -> vol.Schema:
-        """Build the dedicated priority selection step schema."""
+    def _priority_sorting_schema(self) -> vol.Schema:
+        """Build the combined priority sorting step schema."""
         options = self._priority_entry_options()
         option_values = {option["value"] for option in options}
         default_value = self._priority_entry_id if self._priority_entry_id in option_values else ""
         if not default_value and options:
             default_value = options[0]["value"]
+        default_minimum = self._minimum_priority_entries if self._minimum_priority_entries > 0 else 1
 
         return vol.Schema(
             {
+                vol.Required("minimum_priority_entries", default=default_minimum): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1,
+                        max=3,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
                 vol.Required("priority_entry_id", default=default_value): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=options,
@@ -211,15 +225,36 @@ class _SLFlowCommon:
     def _collect_global_departure_settings(self, user_input: dict[str, Any]) -> None:
         """Apply global departures settings from form input."""
         self._maximum_sorted_entries = int(user_input["maximum_sorted_entries"])
-        self._minimum_priority_entries = int(user_input.get("minimum_priority_entries", self._minimum_priority_entries))
-        self._normalize_priority_state()
+        self._priority_enabled = bool(user_input.get("priority_enabled", self._priority_enabled))
+
+    def _validate_api_settings(self) -> str | None:
+        """Validate global API settings and return an error key when invalid."""
+        if self._forecast < 60 or self._forecast > 1200:
+            return "invalid_forecast"
+        if self._scan_interval_seconds < MIN_SCAN_INTERVAL_SECONDS or self._scan_interval_seconds > 3600:
+            return "invalid_scan_interval"
+        return None
 
     def _validate_global_departure_settings(self) -> str | None:
         """Validate global departures settings and return an error key when invalid."""
-        if not self._has_station_entries() and self._minimum_priority_entries > 0:
+        if self._maximum_sorted_entries < 1 or self._maximum_sorted_entries > 10:
+            return "invalid_maximum_departures"
+        return None
+
+    def _validate_priority_enable(self) -> str | None:
+        """Validate that priority sorting can only be enabled with an active station."""
+        if self._priority_enabled and not self._has_station_entries():
             return "priority_entries_require_station"
+        return None
+
+    def _validate_priority_sorting_settings(self) -> str | None:
+        """Validate the combined priority sorting step and return an error key when invalid."""
+        if self._minimum_priority_entries < 1 or self._minimum_priority_entries > 3:
+            return "invalid_priority_entry_limit"
         if self._minimum_priority_entries > self._maximum_sorted_entries:
             return "invalid_priority_configuration"
+        if not self._priority_entry_id:
+            return "priority_entries_require_station"
         return None
 
     def _collect_global_deviations_settings(self, user_input: dict[str, Any]) -> None:
@@ -233,14 +268,14 @@ class _SLFlowCommon:
     def _validate_global_deviations_settings(self) -> str | None:
         """Validate global deviations settings and return an error key when invalid."""
         if self._maximum_deviations < 0 or self._maximum_deviations > 5:
-            return "invalid_deviation_configuration"
+            return "invalid_maximum_deviations"
         if self._minimum_deviation_importance <= 0 or self._minimum_deviation_importance > 100:
-            return "invalid_deviation_configuration"
+            return "invalid_minimum_deviation_importance"
         return None
 
     def _must_select_priority_departure(self) -> bool:
         """Return whether a priority departure selection step is required."""
-        return self._minimum_priority_entries > 0
+        return self._priority_enabled
 
     def _global_settings_payload(self) -> dict[str, Any]:
         """Build the global settings payload for create/update operations."""
@@ -248,6 +283,7 @@ class _SLFlowCommon:
             "forecast": self._forecast,
             "scan_interval_seconds": self._scan_interval_seconds,
             "maximum_sorted_entries": self._maximum_sorted_entries,
+            "priority_enabled": self._priority_enabled,
             "minimum_priority_entries": self._minimum_priority_entries,
             "priority_entry_id": self._priority_entry_id,
             "deviations_enabled": self._deviations_enabled,
@@ -268,6 +304,7 @@ class _SLFlowCommon:
         self._forecast: int = int(data.get("forecast") or DEFAULT_FORECAST)
         self._scan_interval_seconds: int = int(data.get("scan_interval_seconds") or DEFAULT_SCAN_INTERVAL_SECONDS)
         self._maximum_sorted_entries: int = int(data.get("maximum_sorted_entries") or DEFAULT_MAX_SORTED_ENTRIES)
+        self._priority_enabled: bool = bool(data.get("priority_enabled", DEFAULT_ENABLE_PRIORITY))
         self._minimum_priority_entries: int = int(data.get("minimum_priority_entries") or DEFAULT_MIN_PRIORITY_ENTRIES)
         self._priority_entry_id: str = str(data.get("priority_entry_id") or "")
         self._deviations_enabled: bool = bool(data.get("deviations_enabled", DEFAULT_ENABLE_DEVIATIONS))
@@ -290,10 +327,20 @@ class _SLFlowCommon:
             async with websession.get(api_url, params={"query": query}, timeout=15) as response:
                 response.raise_for_status()
                 payload = await response.json()
-        except Exception:
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to search stations during config flow: query=%s error=%s",
+                query,
+                err,
+            )
             return []
 
         if not isinstance(payload, list):
+            _LOGGER.warning(
+                "Unexpected SL site search response type for query=%s: %s",
+                query,
+                type(payload).__name__,
+            )
             return []
 
         target_lower = query.casefold()
@@ -345,7 +392,7 @@ class _SLFlowCommon:
         if transport:
             params["transport"] = str(transport).upper()
         if line:
-            params["line"] = str(line)
+            params["line"] = extract_leading_line_digits(line)
 
         api_url = f"https://transport.integration.sl.se/v1/sites/{site_id}/departures"
         websession = async_get_clientsession(self.hass)
@@ -365,10 +412,36 @@ class _SLFlowCommon:
             return []
 
         if not isinstance(payload, dict):
+            _LOGGER.warning(
+                "Unexpected SL response type during config flow for site_id=%s transport=%s line=%s: %s",
+                site_id,
+                params.get("transport"),
+                params.get("line"),
+                type(payload).__name__,
+            )
             return []
 
         departures = payload.get("departures", [])
-        return departures if isinstance(departures, list) else []
+        departures = departures if isinstance(departures, list) else []
+        _LOGGER.debug(
+            "Fetched %s raw departures during config flow for site_id=%s transport=%s line=%s forecast=%s",
+            len(departures),
+            site_id,
+            params.get("transport"),
+            params.get("line"),
+            params.get("forecast"),
+        )
+        if line:
+            pre_filter_count = len(departures)
+            departures = filter_departures_by_line(departures, line)
+            _LOGGER.debug(
+                "Filtered departures by exact line '%s' for site_id=%s: %s -> %s remaining",
+                line,
+                site_id,
+                pre_filter_count,
+                len(departures),
+            )
+        return departures
 
     async def _async_fetch_station_options(
         self,
@@ -402,6 +475,10 @@ class _SLFlowCommon:
             else:
                 matches = await self._async_search_stations(self.hass, station_name)
                 if not matches:
+                    _LOGGER.error(
+                        "No station matches found during config flow for station_name=%s",
+                        station_name,
+                    )
                     errors["base"] = "no_station_found"
                 else:
                     self._station_name = station_name
@@ -465,6 +542,14 @@ class _SLFlowCommon:
 
         station_options = await self._async_fetch_station_options(self._site_id)
         transport_values = station_options.get("transport", [])
+        if not transport_values:
+            _LOGGER.error(
+                "No transport options found during config flow for site_id=%s station_name=%s. "
+                "station_options=%s",
+                self._site_id,
+                self._station_name,
+                station_options,
+            )
 
         if user_input is not None:
             self._transport = str(user_input["transport"]).upper()
@@ -501,6 +586,14 @@ class _SLFlowCommon:
         line_values = station_options.get("line", [])
 
         if not line_values:
+            _LOGGER.error(
+                "No line options found during config flow for site_id=%s transport=%s station_name=%s. "
+                "station_options=%s",
+                self._site_id,
+                self._transport,
+                self._station_name,
+                station_options,
+            )
             return self.async_abort(reason="no_line_found")
 
         if self._line not in line_values and self._use_form_defaults():
@@ -537,6 +630,15 @@ class _SLFlowCommon:
         station_options = await self._async_fetch_station_options(self._site_id, transport=self._transport, line=self._line)
         direction_values = station_options.get("direction", [])
         if not direction_values:
+            _LOGGER.error(
+                "No direction options found during config flow for site_id=%s transport=%s line=%s station_name=%s. "
+                "station_options=%s",
+                self._site_id,
+                self._transport,
+                self._line,
+                self._station_name,
+                station_options,
+            )
             return self.async_abort(reason="no_direction_found")
 
         if self._direction_name not in direction_values and self._use_form_defaults():
@@ -620,6 +722,7 @@ class SLMqttConfigFlow(_SLFlowCommon, config_entries.ConfigFlow, domain=DOMAIN):
         self._forecast = int(global_data.get("forecast", self._forecast))
         self._scan_interval_seconds = int(global_data.get("scan_interval_seconds", self._scan_interval_seconds))
         self._maximum_sorted_entries = int(global_data.get("maximum_sorted_entries", self._maximum_sorted_entries))
+        self._priority_enabled = bool(global_data.get("priority_enabled", self._priority_enabled))
         self._minimum_priority_entries = int(global_data.get("minimum_priority_entries", self._minimum_priority_entries))
         self._priority_entry_id = str(global_data.get("priority_entry_id") or self._priority_entry_id)
         self._deviations_enabled = bool(global_data.get("deviations_enabled", self._deviations_enabled))
@@ -627,7 +730,6 @@ class SLMqttConfigFlow(_SLFlowCommon, config_entries.ConfigFlow, domain=DOMAIN):
         self._minimum_deviation_importance = int(
             global_data.get("minimum_deviation_importance", self._minimum_deviation_importance)
         )
-        self._normalize_priority_state()
 
     def _create_global_settings_entry(self):
         """Persist the dedicated global settings entry."""
@@ -653,12 +755,16 @@ class SLMqttConfigFlow(_SLFlowCommon, config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                self._forecast = int(user_input["forecast"])
+                self._forecast = int(user_input["forecast"]) * 60
                 self._scan_interval_seconds = int(user_input["scan_interval_seconds"])
             except (TypeError, ValueError):
                 errors["base"] = "invalid_input"
             else:
-                return await self.async_step_departures()
+                validation_error = self._validate_api_settings()
+                if validation_error:
+                    errors["base"] = validation_error
+                else:
+                    return await self.async_step_departures()
 
         return self.async_show_form(
             step_id="user",
@@ -667,42 +773,24 @@ class SLMqttConfigFlow(_SLFlowCommon, config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_departures(self, user_input: dict[str, Any] | None = None):
-        """Step 2 for global flow: departures settings."""
+        """Step 2 for initial global flow: departures settings."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             try:
-                self._collect_global_departure_settings(user_input)
+                self._maximum_sorted_entries = int(user_input["maximum_sorted_entries"])
             except (TypeError, ValueError):
                 errors["base"] = "invalid_input"
             else:
                 validation_error = self._validate_global_departure_settings()
                 if validation_error:
                     errors["base"] = validation_error
-                elif self._must_select_priority_departure():
-                    self._priority_entry_id = ""
-                    return await self.async_step_priority_departure()
                 else:
-                    self._priority_entry_id = ""
                     return await self.async_step_deviations()
 
         return self.async_show_form(
             step_id="departures",
-            data_schema=self._departures_settings_schema(),
-            errors=errors,
-        )
-
-    async def async_step_priority_departure(self, user_input: dict[str, Any] | None = None):
-        """Collect the priority departure after minimum priority count is known."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            self._priority_entry_id = str(user_input.get("priority_entry_id") or "").strip()
-            return await self.async_step_deviations()
-
-        return self.async_show_form(
-            step_id="priority_departure",
-            data_schema=self._priority_settings_schema(),
+            data_schema=self._initial_departures_settings_schema(),
             errors=errors,
         )
 
@@ -771,6 +859,8 @@ class SLMqttOptionsFlow(_SLFlowCommon, config_entries.OptionsFlow):
 
         if user_input is not None:
             section = str(user_input.get("section") or "").strip()
+            if section == SETTINGS_SECTION_API:
+                return await self.async_step_api_settings()
             if section == SETTINGS_SECTION_DEPARTURES:
                 return await self.async_step_departures()
             if section == SETTINGS_SECTION_DEVIATIONS:
@@ -780,6 +870,29 @@ class SLMqttOptionsFlow(_SLFlowCommon, config_entries.OptionsFlow):
         return self.async_show_form(
             step_id=SETTINGS_SECTION_SETTINGS_MENU,
             data_schema=self._settings_menu_schema(),
+            errors=errors,
+        )
+
+    async def async_step_api_settings(self, user_input: dict[str, Any] | None = None):
+        """Edit the shared API settings from the global settings menu."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            try:
+                self._forecast = int(user_input["forecast"]) * 60
+                self._scan_interval_seconds = int(user_input["scan_interval_seconds"])
+            except (TypeError, ValueError):
+                errors["base"] = "invalid_input"
+            else:
+                validation_error = self._validate_api_settings()
+                if validation_error:
+                    errors["base"] = validation_error
+                else:
+                    return self._save_global_settings()
+
+        return self.async_show_form(
+            step_id="api_settings",
+            data_schema=self._api_settings_schema(),
             errors=errors,
         )
 
@@ -793,12 +906,11 @@ class SLMqttOptionsFlow(_SLFlowCommon, config_entries.OptionsFlow):
             except (TypeError, ValueError):
                 errors["base"] = "invalid_input"
             else:
-                validation_error = self._validate_global_departure_settings()
+                validation_error = self._validate_global_departure_settings() or self._validate_priority_enable()
                 if validation_error:
                     errors["base"] = validation_error
                 elif self._must_select_priority_departure():
-                    self._priority_entry_id = str(self._config_entry.data.get("priority_entry_id") or self._priority_entry_id)
-                    return await self.async_step_priority_departure()
+                    return await self.async_step_priority_sorting()
                 else:
                     return self._save_global_settings()
 
@@ -811,8 +923,15 @@ class SLMqttOptionsFlow(_SLFlowCommon, config_entries.OptionsFlow):
     def _save_global_settings(self):
         """Persist updated global settings for the current options entry and return to the menu."""
         updated_data = dict(self._config_entry.data)
-        updated_data.update(self._global_settings_payload())
-        self.hass.config_entries.async_update_entry(self._config_entry, data=updated_data)
+        updated_options = dict(self._config_entry.options)
+        global_settings = self._global_settings_payload()
+        updated_data.update(global_settings)
+        updated_options.update(global_settings)
+        self.hass.config_entries.async_update_entry(
+            self._config_entry,
+            data=updated_data,
+            options=updated_options,
+        )
 
         return self.async_show_form(
             step_id=SETTINGS_SECTION_SETTINGS_MENU,
@@ -820,17 +939,26 @@ class SLMqttOptionsFlow(_SLFlowCommon, config_entries.OptionsFlow):
             errors={},
         )
 
-    async def async_step_priority_departure(self, user_input: dict[str, Any] | None = None):
-        """Collect the priority departure after minimum priority count is known."""
+    async def async_step_priority_sorting(self, user_input: dict[str, Any] | None = None):
+        """Collect the minimum priority entries and priority station together."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            self._priority_entry_id = str(user_input.get("priority_entry_id") or "").strip()
-            return self._save_global_settings()
+            try:
+                self._minimum_priority_entries = int(user_input["minimum_priority_entries"])
+            except (TypeError, ValueError):
+                errors["base"] = "invalid_input"
+            else:
+                self._priority_entry_id = str(user_input.get("priority_entry_id") or "").strip()
+                validation_error = self._validate_priority_sorting_settings()
+                if validation_error:
+                    errors["base"] = validation_error
+                else:
+                    return self._save_global_settings()
 
         return self.async_show_form(
-            step_id="priority_departure",
-            data_schema=self._priority_settings_schema(),
+            step_id="priority_sorting",
+            data_schema=self._priority_sorting_schema(),
             errors=errors,
         )
 

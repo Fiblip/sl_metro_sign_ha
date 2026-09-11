@@ -15,6 +15,7 @@ from homeassistant.helpers import issue_registry as ir
 
 from .const import (
     DEFAULT_ENABLE_DEVIATIONS,
+    DEFAULT_ENABLE_PRIORITY,
     DEFAULT_FORECAST,
     DEFAULT_MAX_DEVIATIONS,
     DEFAULT_MAX_SORTED_ENTRIES,
@@ -113,19 +114,25 @@ def _get_global_sort_limits(hass: HomeAssistant) -> tuple[int, int]:
         return DEFAULT_MAX_SORTED_ENTRIES, DEFAULT_MIN_PRIORITY_ENTRIES
 
     data = {**global_entry.data, **global_entry.options}
+    priority_enabled = bool(data.get("priority_enabled", DEFAULT_ENABLE_PRIORITY))
+    minimum_priority_entries = (
+        int(data.get("minimum_priority_entries", DEFAULT_MIN_PRIORITY_ENTRIES)) if priority_enabled else 0
+    )
     return (
         int(data.get("maximum_sorted_entries", DEFAULT_MAX_SORTED_ENTRIES)),
-        int(data.get("minimum_priority_entries", DEFAULT_MIN_PRIORITY_ENTRIES)),
+        minimum_priority_entries,
     )
 
 
 def _get_global_priority_entry_id(hass: HomeAssistant) -> str:
-    """Read the globally selected priority entry id."""
+    """Read the globally selected priority entry id, when priority sorting is enabled."""
     global_entry = _get_global_settings_entry(hass)
     if global_entry is None:
         return ""
 
     data = {**global_entry.data, **global_entry.options}
+    if not bool(data.get("priority_enabled", DEFAULT_ENABLE_PRIORITY)):
+        return ""
     return str(data.get("priority_entry_id") or "").strip()
 
 
@@ -144,25 +151,23 @@ def _get_global_deviation_settings(hass: HomeAssistant) -> tuple[bool, int, int]
 
 
 def _clear_priority_if_entry_matches(hass: HomeAssistant, station_entry_id: str) -> None:
-    """Reset priority settings when the current priority station is disabled or removed."""
+    """Disable priority sorting when its selected station is disabled or removed."""
     global_entry = _get_global_settings_entry(hass)
     if global_entry is None:
         return
 
     merged = {**global_entry.data, **global_entry.options}
     current_priority_entry_id = str(merged.get("priority_entry_id") or "").strip()
-    if current_priority_entry_id != station_entry_id:
+    if current_priority_entry_id != station_entry_id or not merged.get("priority_enabled", DEFAULT_ENABLE_PRIORITY):
         return
 
     updated_data = dict(global_entry.data)
     updated_options = dict(global_entry.options)
-    updated_data["minimum_priority_entries"] = 0
-    updated_data["priority_entry_id"] = ""
-    updated_options["minimum_priority_entries"] = 0
-    updated_options["priority_entry_id"] = ""
+    updated_data["priority_enabled"] = False
+    updated_options["priority_enabled"] = False
     hass.config_entries.async_update_entry(global_entry, data=updated_data, options=updated_options)
     _LOGGER.info(
-        "Reset global priority settings because station entry '%s' was disabled or removed.",
+        "Disabled global priority sorting because station entry '%s' was disabled or removed.",
         station_entry_id,
     )
 

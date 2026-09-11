@@ -39,7 +39,7 @@ class MetroSignLight(LightEntity, RestoreEntity):
             "identifiers": {(entry.domain, entry.entry_id)},
             "name": "SL Metro Sign Display",
             "manufacturer": "Fiblip",
-            "model": "LED Matrix HUB75 P4 Display",
+            "model": "LED Matrix",
         }
         self._is_on = False
         self._brightness = 0

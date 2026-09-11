@@ -20,14 +20,13 @@ Custom Home Assistant integration that fetches SL departures/deviations and publ
 ## Current Feature Set
 
 - Global settings entry:
-	- Forecast minutes
+	- Forecast hours (1-20)
 	- Scan interval seconds
-	- Maximum sorted departures
-	- Minimum priority departures
-	- Priority station entry
-	- Deviations enabled
-	- Maximum deviations
-	- Minimum deviation importance
+	- Departures: maximum sorted departures (1-10)
+	- Departures: optional priority sorting, with 1-3 minimum priority departures
+	- Deviations: enabled/disabled
+	- Deviations: maximum deviations (0-5)
+	- Deviations: minimum importance (1-100)
 - Station entries:
 	- Station search and selection
 	- Transport, line, and direction selection
@@ -43,6 +42,9 @@ Custom Home Assistant integration that fetches SL departures/deviations and publ
 	- Search matching is separator-insensitive (for example `Tcentralen` matches `T-centralen`)
 - Config-flow diagnostics:
 	- Failed departure fetches in config flow are logged with site, transport, line, and forecast context
+- Line filtering:
+	- Numeric prefixes are used for the SL API request, then departures are filtered again for an exact line match
+	- This keeps line designations such as `43` and `43X` separate
 
 ## Sorting Behavior
 
@@ -133,13 +135,15 @@ Notes:
 1. Go to `Settings` -> `Devices & services`.
 2. Select `Add integration`.
 3. Search for `SL Metro Sign`.
-4. Complete global settings.
-5. Add one or more station entries.
+4. Complete the API, departures, and deviations settings.
+5. Add one or more station entries by searching for a station, then selecting its transport, line, and destination.
+6. To change global settings later, open the integration's options and select the relevant settings section.
 
 ## Requirements
 
 - Home Assistant with MQTT integration configured.
 - Network access to `https://transport.integration.sl.se`.
+- The SL API forecast window is configured in hours; the integration sends the corresponding value in minutes.
 
 ## Troubleshooting
 

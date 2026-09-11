@@ -5,8 +5,13 @@
     },
     "error": {
       "invalid_priority_configuration": "Minimum priority entries cannot exceed maximum sorted entries",
-      "invalid_deviation_configuration": "Deviation settings are invalid",
-      "priority_entries_require_station": "Create at least one station entry before setting minimum priority entries above 0"
+      "invalid_forecast": "Forecast must be between 1 and 180 minutes",
+      "invalid_scan_interval": "Scan interval must be between 15 and 3600 seconds",
+      "invalid_maximum_departures": "Maximum departures must be between 1 and 10",
+      "invalid_priority_entry_limit": "Minimum priority entries must be between 1 and 3",
+      "invalid_maximum_deviations": "Maximum deviations must be between 0 and 5",
+      "invalid_minimum_deviation_importance": "Minimum deviation importance must be between 1 and 100",
+      "priority_entries_require_station": "Enable / add at least one active station entry before turning on priority sorting"
     },
     "step": {
       "user": {
@@ -16,21 +21,17 @@
           "scan_interval_seconds": "Scan interval"
         },
         "data_description": {
-          "forecast": "Time in minutes to look for departures.",
+          "forecast": "Time in hours to look for departures.",
           "scan_interval_seconds": "Time in seconds between API calls."
         }
       },
       "departures": {
         "title": "Departures",
         "data": {
-          "maximum_sorted_entries": "Maximum departures",
-          "minimum_priority_entries": "Minimum priority entries",
-          "priority_entry_id": "Priority departure"
+          "maximum_sorted_entries": "Maximum departures"
         },
         "data_description": {
-          "maximum_sorted_entries": "Maximum number of departures to publish.",
-          "minimum_priority_entries": "Minimum number of priority departures to include when available.",
-          "priority_entry_id": "Which configured station entry should be prioritized."
+          "maximum_sorted_entries": "Maximum number of departures to publish."
         }
       },
       "deviations": {
@@ -46,13 +47,15 @@
           "minimum_deviation_importance": "Only include deviations at or above this importance level."
         }
       },
-      "priority_departure": {
-        "title": "Select priority departure",
+      "priority_sorting": {
+        "title": "Priority sorting",
         "data": {
+          "minimum_priority_entries": "Minimum priority entries",
           "priority_entry_id": "Priority departure"
         },
         "data_description": {
-          "priority_entry_id": "Select the station entry to prioritize in sorting."
+          "minimum_priority_entries": "Minimum number of priority departures to include when available.",
+          "priority_entry_id": "Which configured station entry should be prioritized."
         }
       },
       "station_search": {
@@ -114,8 +117,13 @@
   "options": {
     "error": {
       "invalid_priority_configuration": "Minimum priority entries cannot exceed maximum sorted entries",
-      "invalid_deviation_configuration": "Deviation settings are invalid",
-      "priority_entries_require_station": "Create at least one station entry before setting minimum priority entries above 0"
+      "invalid_forecast": "Forecast must be between 1 and 20 hours",
+      "invalid_scan_interval": "Scan interval must be between 15 and 3600 seconds",
+      "invalid_maximum_departures": "Maximum departures must be between 1 and 10",
+      "invalid_priority_entry_limit": "Minimum priority entries must be between 1 and 3",
+      "invalid_maximum_deviations": "Maximum deviations must be between 0 and 5",
+      "invalid_minimum_deviation_importance": "Minimum deviation importance must be between 1 and 100",
+      "priority_entries_require_station": "Enable / add at least one active station entry before turning on priority sorting"
     },
     "step": {
       "settings_menu": {
@@ -127,14 +135,14 @@
           "section": "Choose which settings section to edit."
         }
       },
-      "user": {
+      "api_settings": {
         "title": "API settings",
         "data": {
           "forecast": "Forecast",
           "scan_interval_seconds": "Scan interval"
         },
         "data_description": {
-          "forecast": "Time in minutes to look for departures.",
+          "forecast": "Time in hours to look for departures.",
           "scan_interval_seconds": "Time in seconds between API calls."
         }
       },
@@ -142,13 +150,11 @@
         "title": "Departures",
         "data": {
           "maximum_sorted_entries": "Maximum departures",
-          "minimum_priority_entries": "Minimum priority entries",
-          "priority_entry_id": "Priority departure"
+          "priority_enabled": "Enable priority sorting"
         },
         "data_description": {
           "maximum_sorted_entries": "Maximum number of departures to publish.",
-          "minimum_priority_entries": "Minimum number of priority departures to include when available.",
-          "priority_entry_id": "Which configured station entry should be prioritized."
+          "priority_enabled": "Prioritize departures from a chosen station entry."
         }
       },
       "deviations": {
@@ -164,13 +170,15 @@
           "minimum_deviation_importance": "Only include deviations at or above this importance level."
         }
       },
-      "priority_departure": {
-        "title": "Select priority departure",
+      "priority_sorting": {
+        "title": "Priority sorting",
         "data": {
+          "minimum_priority_entries": "Minimum priority entries",
           "priority_entry_id": "Priority departure"
         },
         "data_description": {
-          "priority_entry_id": "Select the station entry to prioritize in sorting."
+          "minimum_priority_entries": "Minimum number of priority departures to include when available.",
+          "priority_entry_id": "Which configured station entry should be prioritized."
         }
       },
       "station_search": {

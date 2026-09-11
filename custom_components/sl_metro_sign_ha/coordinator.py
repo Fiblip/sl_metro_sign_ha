@@ -10,7 +10,7 @@ from typing import Any
 from aiohttp import ClientResponseError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .sl_api_parser import StationDepartures, parse_station_departures
+from .sl_api_parser import StationDepartures, extract_leading_line_digits, filter_departures_by_line, parse_station_departures
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,6 +119,8 @@ class SLDataCoordinator:
                         self.site_id,
                     )
                     continue
+            elif key == "line":
+                params[key] = extract_leading_line_digits(normalized)
             else:
                 params[key] = normalized.upper()
 
@@ -129,5 +131,10 @@ class SLDataCoordinator:
 
         if not isinstance(payload, dict):
             raise ValueError(f"Unexpected SL response type: {type(payload).__name__}")
+
+        if "line" in params:
+            departures = payload.get("departures", [])
+            if isinstance(departures, list):
+                payload["departures"] = filter_departures_by_line(departures, self.line)
 
         return payload

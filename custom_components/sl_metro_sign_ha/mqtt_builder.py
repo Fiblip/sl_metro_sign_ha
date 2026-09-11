@@ -44,15 +44,10 @@ async def _async_publish_if_changed(
     topic_cache[topic] = serialized_payload
 
 
-def _coerce_dep_num(value: str) -> int | None:
-    """Convert line designations to an integer when possible."""
+def _coerce_dep_num(value: str) -> str | None:
+    """Return the line designation as-is, e.g. '43X', or None when empty."""
     normalized = str(value).strip()
-    if not normalized:
-        return None
-    try:
-        return int(normalized)
-    except ValueError:
-        return None
+    return normalized or None
 
 
 def build_departures_payload(sorted_departures: list[Departure]) -> dict[str, object]:

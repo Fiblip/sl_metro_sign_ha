@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-import re
+from datetime import datetime
 from typing import Iterable
 
 from .sl_api_parser import Departure, StationDepartures
 
 _LOGGER = logging.getLogger(__name__)
-_MINUTES_PATTERN = re.compile(r"^\s*(\d+)\s*min\s*$", re.IGNORECASE)
-_CLOCK_PATTERN = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*$")
 
 
 @dataclass(slots=True)
@@ -27,17 +25,7 @@ class DepartureSorter:
     priority_entry_id: str
 
     def sort_departures(self, station_departures: Iterable[StationDepartures]) -> list[Departure]:
-        """Return departures sorted by timestamp first and then display_time.
-
-        Primary key: timestamp ascending.
-        Secondary key (same timestamp): display_time ascending using these ranks:
-        1) Nu
-        2) X min
-        3) HH:MM
-
-        Python's sort is stable, so departures with identical display_time keep
-        their input order.
-        """
+        """Return departures sorted by timestamp ascending, then direction alphabetically on ties."""
         records = self._collect_departure_records(station_departures)
         if not records:
             return []
@@ -49,7 +37,7 @@ class DepartureSorter:
         return [record.departure for record in final_records]
 
     def _collect_departure_records(self, station_departures: Iterable[StationDepartures]) -> list[_DepartureRecord]:
-        """Flatten all station departures and drop invalid items."""
+        """Flatten all station departures and drop items without a valid timestamp."""
         combined: list[_DepartureRecord] = []
         for station_data in station_departures:
             for departure in station_data.departures:
@@ -61,8 +49,14 @@ class DepartureSorter:
                     )
                     continue
 
-                sort_key = self._build_sort_key(departure)
-                if sort_key is None:
+                try:
+                    datetime.fromisoformat(departure.timestamp)
+                except ValueError:
+                    _LOGGER.error(
+                        "Skipping departure with corrupt timestamp '%s' for site %s",
+                        departure.timestamp,
+                        station_data.site_id,
+                    )
                     continue
 
                 combined.append(
@@ -72,7 +66,7 @@ class DepartureSorter:
                             bool(self.priority_entry_id)
                             and station_data.entry_id == self.priority_entry_id
                         ),
-                        sort_key=sort_key,
+                        sort_key=(departure.timestamp, departure.direction.casefold()),
                     )
                 )
         return combined
@@ -104,42 +98,6 @@ class DepartureSorter:
 
         return selected_records
 
-    def _build_sort_key(self, departure: Departure) -> tuple[str, int, int, int, str] | None:
-        """Create a deterministic ascending sort key for one departure."""
-        sort_key = self._display_time_tiebreak_key(departure.display_time)
-        if sort_key is None:
-            _LOGGER.error("Skipping departure with unsupported display_time '%s'", departure.display_time)
-            return None
-        return (departure.timestamp, *sort_key)
-
-    def _display_time_tiebreak_key(self, display_time: str) -> tuple[int, int, int, str] | None:
-        """Rank display_time values for equal timestamps.
-
-        Rank order:
-        0: Nu
-        1: X min
-        2: HH:MM
-        Unsupported values return None and are skipped by the caller.
-        """
-        value = display_time.strip()
-
-        if value.casefold() == "nu":
-            return (0, 0, 0, "")
-
-        minutes_match = _MINUTES_PATTERN.match(value)
-        if minutes_match:
-            minutes_value = int(minutes_match.group(1))
-            return (1, minutes_value, 0, "")
-
-        clock_match = _CLOCK_PATTERN.match(value)
-        if clock_match:
-            hours = int(clock_match.group(1))
-            minutes = int(clock_match.group(2))
-            total_minutes = (hours * 60) + minutes
-            return (2, total_minutes, 0, "")
-
-        return None
-
 
 @dataclass(slots=True)
 class _DepartureRecord:
@@ -147,4 +105,4 @@ class _DepartureRecord:
 
     departure: Departure
     is_priority: bool
-    sort_key: tuple[str, int, int, int, str]
+    sort_key: tuple[str, str]

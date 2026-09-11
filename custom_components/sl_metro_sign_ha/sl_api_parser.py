@@ -2,8 +2,49 @@
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
+
+from .const import DEPARTURE_HHMM_THRESHOLD_MINUTES, NU_THRESHOLD_SECONDS
+
+_LEADING_DIGITS_PATTERN = re.compile(r"^(\d+)")
+
+
+def extract_leading_line_digits(line: str) -> str:
+    """Return the leading digits of a line designation, e.g. '43X' -> '43'.
+
+    The SL API's 'line' query parameter only accepts an integer, while line
+    designations can include letter suffixes (e.g. '43X'). Falls back to the
+    original value when no leading digits are found.
+    """
+    match = _LEADING_DIGITS_PATTERN.match(str(line).strip())
+    return match.group(1) if match else str(line).strip()
+
+
+def _departure_line_designation(departure: dict[str, Any]) -> str:
+    """Extract the line designation from a raw SL departure dict."""
+    line_info = departure.get("line") if isinstance(departure.get("line"), dict) else {}
+    return str(line_info.get("designation") or line_info.get("name") or departure.get("lineNumber") or "").strip()
+
+
+def filter_departures_by_line(departures: list[dict[str, Any]], line: str) -> list[dict[str, Any]]:
+    """Keep only departures whose line designation exactly matches 'line'.
+
+    Needed because the SL API's integer-only 'line' filter can return
+    multiple designations sharing the same leading digits (e.g. '43' and
+    '43X'), so an exact match must be re-applied client-side.
+    """
+    target = str(line).strip().casefold()
+    if not target:
+        return departures
+    return [
+        departure
+        for departure in departures
+        if isinstance(departure, dict) and _departure_line_designation(departure).casefold() == target
+    ]
 
 
 @dataclass(slots=True)
@@ -64,11 +105,30 @@ def _extract_deviation_message(raw_deviation: dict[str, Any]) -> str:
     return ""
 
 
+def _format_departure_display_time(timestamp: str, now: datetime) -> str:
+    """Compute the sign display time ('Nu', 'X min', or 'HH:MM') from a raw timestamp."""
+    try:
+        departure_time = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return ""
+
+    diff_seconds = (departure_time - now).total_seconds()
+    if diff_seconds <= NU_THRESHOLD_SECONDS:
+        return "Nu"
+
+    minutes = math.ceil(diff_seconds / 60)
+    if minutes > DEPARTURE_HHMM_THRESHOLD_MINUTES:
+        return departure_time.strftime("%H:%M")
+
+    return f"{minutes} min"
+
+
 def parse_station_departures(
     payload: dict[str, Any],
     *,
     site_id: str | int | None = None,
     entry_id: str = "",
+    now: datetime | None = None,
 ) -> StationDepartures:
     """Parse the raw SL departure payload into structured Python objects.
 
@@ -77,6 +137,8 @@ def parse_station_departures(
     """
     if not isinstance(payload, dict):
         raise ValueError(f"Unexpected SL response type: {type(payload).__name__}")
+
+    now = now or datetime.now()
 
     raw_departures = payload.get("departures", [])
     if not isinstance(raw_departures, list):
@@ -95,8 +157,8 @@ def parse_station_departures(
             or ""
         )
         direction = _clean_text(departure.get("direction"))
-        display_time = _clean_text(departure.get("display"))
         timestamp = _clean_text(departure.get("expected"))
+        display_time = _format_departure_display_time(timestamp, now) if timestamp else ""
 
         parsed_departures.append(
             Departure(
