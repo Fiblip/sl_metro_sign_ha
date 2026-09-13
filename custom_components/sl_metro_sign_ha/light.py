@@ -26,7 +26,7 @@ async def async_setup_entry(
 
 
 class MetroSignLight(LightEntity, RestoreEntity):
-    """Minimal light entity used to control the metro sign display state."""
+    """Minimal light entity used to control the metro sign display display_state."""
 
     _attr_has_entity_name = True
     _attr_name = "SL Metro Sign Display"
@@ -55,12 +55,12 @@ class MetroSignLight(LightEntity, RestoreEntity):
         return self._brightness
 
     async def async_added_to_hass(self) -> None:
-        """Restore the last known light state and align polling with it."""
+        """Restore the last known light display_state and align polling with it."""
         await super().async_added_to_hass()
 
         last_state = await self.async_get_last_state()
         if last_state is not None:
-            self._is_on = last_state.state == "on"
+            self._is_on = last_state.display_state == "on"
             restored_brightness = last_state.attributes.get(ATTR_BRIGHTNESS)
             if restored_brightness is not None:
                 self._brightness = max(0, min(255, int(restored_brightness)))
@@ -74,7 +74,7 @@ class MetroSignLight(LightEntity, RestoreEntity):
         try:
             await async_publish_light_control_state(self.hass, self._is_on, self._brightness)
         except Exception:
-            _LOGGER.exception("Failed to publish metro sign light control state to MQTT.")
+            _LOGGER.exception("Failed to publish metro sign light control display_state to MQTT.")
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the display light on and optionally update brightness."""

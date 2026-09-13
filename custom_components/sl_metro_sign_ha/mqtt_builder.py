@@ -52,7 +52,7 @@ def _coerce_dep_num(value: str) -> str | None:
 
 def build_departures_payload(sorted_departures: list[Departure]) -> dict[str, object]:
     """Build the MQTT payload for the LED sign."""
-    dep_info_list = [
+    departures = [
         {
             "dep_name": departure.direction or "Unknown",
             "dep_num": _coerce_dep_num(departure.line_number),
@@ -61,8 +61,8 @@ def build_departures_payload(sorted_departures: list[Departure]) -> dict[str, ob
         for departure in sorted_departures
     ]
     return {
-        "noof_deps": len(dep_info_list),
-        "dep_info_list": dep_info_list,
+        "noof_deps": len(departures),
+        "departures": departures,
     }
 
 
@@ -102,7 +102,7 @@ async def async_publish_deviations_json(hass: HomeAssistant, payload_json: str) 
 
 
 async def async_publish_light_control_state(hass: HomeAssistant, is_on: bool, brightness: int) -> None:
-    """Publish metro sign light power and brightness to one state topic."""
+    """Publish metro sign light power and brightness to one display_state topic."""
     state_value = 1 if is_on else 0
     brightness_value = max(0, min(255, int(brightness))) if is_on else 0
     payload = {

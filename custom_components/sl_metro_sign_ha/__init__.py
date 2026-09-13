@@ -299,7 +299,7 @@ async def async_set_display_enabled(
     *,
     refresh_immediately: bool = False,
 ) -> None:
-    """Pause or resume station refreshes based on display power state."""
+    """Pause or resume station refreshes based on display power display_state."""
     domain_data = hass.data.setdefault(DOMAIN, {})
     was_enabled = is_display_enabled(hass)
     domain_data["display_enabled"] = enabled

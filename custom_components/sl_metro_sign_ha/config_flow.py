@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_MIN_PRIORITY_ENTRIES,
     DEFAULT_SCAN_INTERVAL_SECONDS,
     DOMAIN,
+    MAX_SORTED_ENTRIES,
     MAX_STATION_ENTRIES,
     MIN_SCAN_INTERVAL_SECONDS,
     SETTINGS_SECTION_DEPARTURES,
@@ -150,7 +151,7 @@ class _SLFlowCommon:
                 vol.Required("maximum_sorted_entries", default=self._maximum_sorted_entries): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=1,
-                        max=10,
+                        max=MAX_SORTED_ENTRIES,
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
@@ -165,7 +166,7 @@ class _SLFlowCommon:
                 vol.Required("maximum_sorted_entries", default=self._maximum_sorted_entries): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=1,
-                        max=10,
+                        max=MAX_SORTED_ENTRIES,
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
@@ -237,7 +238,7 @@ class _SLFlowCommon:
 
     def _validate_global_departure_settings(self) -> str | None:
         """Validate global departures settings and return an error key when invalid."""
-        if self._maximum_sorted_entries < 1 or self._maximum_sorted_entries > 10:
+        if self._maximum_sorted_entries < 1 or self._maximum_sorted_entries > MAX_SORTED_ENTRIES:
             return "invalid_maximum_departures"
         return None
 

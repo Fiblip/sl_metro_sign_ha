@@ -22,7 +22,7 @@ Custom Home Assistant integration that fetches SL departures/deviations and publ
 - Global settings entry:
 	- Forecast hours (1-20)
 	- Scan interval seconds
-	- Departures: maximum sorted departures (1-10)
+	- Departures: maximum sorted departures (1-5)
 	- Departures: optional priority sorting, with 1-3 minimum priority departures
 	- Deviations: enabled/disabled
 	- Deviations: maximum deviations (0-5)
@@ -71,17 +71,17 @@ Custom Home Assistant integration that fetches SL departures/deviations and publ
 
 - Departures topic: `metro_sign/departures`
 - Deviations topic: `metro_sign/deviations`
-- Display control state topic: `metro_sign/state`
+- Display control display_state topic: `metro_sign/display_state`
 
 ### Departures payload shape
 
 ```json
 {
 	"noof_deps": 3,
-	"dep_info_list": [
+	"departures": [
 		{
 			"dep_name": "Fruangen",
-			"dep_num": 14,
+			"dep_num": "14",
 			"dep_time": "3 min"
 		}
 	]
@@ -102,7 +102,7 @@ Custom Home Assistant integration that fetches SL departures/deviations and publ
 }
 ```
 
-### Display state payload shape
+### Display display_state payload shape
 
 ```json
 {
@@ -118,9 +118,9 @@ Notes:
 ## Light Entity
 
 - Entity type: Home Assistant light with brightness mode.
-- Power state controls whether station refresh/publish loop is active.
-- Brightness range: 0-255 state reporting, 1-255 for turn-on brightness values.
-- Last known state is restored on Home Assistant restart.
+- Power display_state controls whether station refresh/publish loop is active.
+- Brightness range: 0-255 display_state reporting, 1-255 for turn-on brightness values.
+- Last known display_state is restored on Home Assistant restart.
 
 ## Installation (HACS)
 
